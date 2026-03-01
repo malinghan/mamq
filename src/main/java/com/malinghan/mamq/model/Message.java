@@ -16,4 +16,6 @@ public class Message<T> {
     private T body;
     // 消息头
     private Map<String, String> headers;
+    // 消息偏移量
+    private Integer offset;
 }

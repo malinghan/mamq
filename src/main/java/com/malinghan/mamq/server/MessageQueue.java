@@ -27,7 +27,10 @@ public class MessageQueue {
     public Message recv(String consumerId) {
         Subscription sub = subscriptions.get(consumerId);
         if (sub == null || sub.getOffset() >= store.size()) return null;
-        return store.read(sub.getOffset());                             // ← 读文件
+        int offset = sub.getOffset();
+        Message msg = store.read(offset);
+        if (msg != null) msg.setOffset(offset);  // 填充 offset，客户端 ack 时使用
+        return msg;
     }
 
     // 批量消费，最多返回 size 条
@@ -39,6 +42,7 @@ public class MessageQueue {
         for (int i = 0; i < size; i++) {
             Message msg = store.read(offset + i);
             if (msg == null) break;
+            msg.setOffset(offset + i);  // 填充 offset
             result.add(msg);
         }
         return result;
