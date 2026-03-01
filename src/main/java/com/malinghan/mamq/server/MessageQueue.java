@@ -4,28 +4,58 @@ package com.malinghan.mamq.server;
 import com.malinghan.mamq.model.Message;
 import com.malinghan.mamq.model.Stat;
 import com.malinghan.mamq.model.Subscription;
+import com.malinghan.mamq.store.Store;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 //topic → MessageQueue[topic、messages、subscriptions]
 public class MessageQueue {
-    // 主题
     private final String topic;
-    // 内存队列消息存储：下标即 offset
-    private final List<Message> messages = new ArrayList<>();
-    // 订阅关系：consumerId → Subscription[topic、consumerId、offset]
+    private final Store store;                                          // ← 替换 ArrayList
     private final Map<String, Subscription> subscriptions = new ConcurrentHashMap<>();
 
     public MessageQueue(String topic) {
         this.topic = topic;
+        this.store = new Store(topic);                                  // ← 初始化 Store
     }
 
-    // 写入消息，返回 offset（即当前 size - 1）
-    public synchronized int send(Message message) {
-        messages.add(message);
-        return messages.size() - 1;
+    public int send(Message message) {
+        return store.write(message);                                    // ← 写文件
     }
+
+    public Message recv(String consumerId) {
+        Subscription sub = subscriptions.get(consumerId);
+        if (sub == null || sub.getOffset() >= store.size()) return null;
+        return store.read(sub.getOffset());                             // ← 读文件
+    }
+
+    // 批量消费，最多返回 size 条
+    public List<Message> batch(String consumerId, int size) {
+        Subscription sub = subscriptions.get(consumerId);
+        if (sub == null) return Collections.emptyList();
+        List<Message> result = new ArrayList<>();
+        int offset = sub.getOffset();
+        for (int i = 0; i < size; i++) {
+            Message msg = store.read(offset + i);
+            if (msg == null) break;
+            result.add(msg);
+        }
+        return result;
+    }
+
+    public int ack(String consumerId, int offset) {
+        Subscription sub = subscriptions.get(consumerId);
+        if (sub != null) sub.setOffset(offset + 1);
+        return offset;
+    }
+
+    public Stat stat(String consumerId) {
+        Subscription sub = subscriptions.get(consumerId);
+        int position = sub == null ? 0 : sub.getOffset();
+        return new Stat(store.size(), position);
+    }
+
 
     // 订阅：初始化 offset=0 的书签
     public void subscribe(String consumerId) {
@@ -36,30 +66,5 @@ public class MessageQueue {
     // 取消订阅
     public void unsubscribe(String consumerId) {
         subscriptions.remove(consumerId);
-    }
-
-    // 读取当前 offset 的消息，不推进 offset
-    public Message recv(String consumerId) {
-        Subscription sub = subscriptions.get(consumerId);
-        if (sub == null || sub.getOffset() >= messages.size()) {
-            return null;
-        }
-        return messages.get(sub.getOffset());
-    }
-
-    // 确认消费，offset 推进到 offset+1
-    public int ack(String consumerId, int offset) {
-        Subscription sub = subscriptions.get(consumerId);
-        if (sub != null) {
-            sub.setOffset(offset + 1);
-        }
-        return offset;
-    }
-
-    // 统计
-    public Stat stat(String consumerId) {
-        Subscription sub = subscriptions.get(consumerId);
-        int position = sub == null ? 0 : sub.getOffset();
-        return new Stat(messages.size(), position);
     }
 }

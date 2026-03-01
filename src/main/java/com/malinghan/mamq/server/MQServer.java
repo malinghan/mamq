@@ -5,6 +5,7 @@ import com.malinghan.mamq.model.Result;
 import com.malinghan.mamq.model.Stat;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -62,5 +63,13 @@ public class MQServer {
                              @RequestParam String cid) {
         Stat stat = getOrCreate(t).stat(cid);
         return Result.ok(stat);
+    }
+
+    @GetMapping("/batch")
+    public Result<List<Message>> batch(@RequestParam String t,
+                                       @RequestParam String cid,
+                                       @RequestParam(defaultValue = "10") int size) {
+        List<Message> msgs = getOrCreate(t).batch(cid, size);
+        return Result.ok(msgs);
     }
 }
